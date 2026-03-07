@@ -12,6 +12,8 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  sendCard: (jid: string, title: string, content: string) => Promise<string | null>;
+  updateCard: (jid: string, cardId: string, title: string, content: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -90,6 +92,29 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
                   );
+                }
+              } else if (data.type === 'send_card' && data.chatJid && data.title !== undefined && data.content !== undefined) {
+                const targetGroup = registeredGroups[data.chatJid];
+                if (isMain || (targetGroup && targetGroup.folder === sourceGroup)) {
+                  const cardId = await deps.sendCard(data.chatJid, data.title, data.content);
+                  // Write cardId back to IPC so agent can pick it up
+                  if (cardId && data.replyFile) {
+                    const replyPath = path.join(path.dirname(filePath), '..', 'input', data.replyFile as string);
+                    try {
+                      fs.writeFileSync(replyPath, JSON.stringify({ cardId }));
+                    } catch { /* best effort */ }
+                  }
+                  logger.info({ chatJid: data.chatJid, cardId, sourceGroup }, 'IPC card sent');
+                } else {
+                  logger.warn({ chatJid: data.chatJid, sourceGroup }, 'Unauthorized IPC send_card attempt blocked');
+                }
+              } else if (data.type === 'update_card' && data.chatJid && data.cardId && data.title !== undefined && data.content !== undefined) {
+                const targetGroup = registeredGroups[data.chatJid];
+                if (isMain || (targetGroup && targetGroup.folder === sourceGroup)) {
+                  await deps.updateCard(data.chatJid, data.cardId, data.title, data.content);
+                  logger.info({ chatJid: data.chatJid, cardId: data.cardId, sourceGroup }, 'IPC card updated');
+                } else {
+                  logger.warn({ chatJid: data.chatJid, sourceGroup }, 'Unauthorized IPC update_card attempt blocked');
                 }
               }
               fs.unlinkSync(filePath);

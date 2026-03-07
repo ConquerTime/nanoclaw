@@ -218,6 +218,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
       logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
       if (text) {
+        // Clear the thinking placeholder before sending the real reply
+        await channel.setTyping?.(chatJid, false);
         await channel.sendMessage(chatJid, text);
         outputSentToUser = true;
       }
@@ -562,6 +564,16 @@ async function main(): Promise<void> {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       return channel.sendMessage(jid, text);
+    },
+    sendCard: async (jid, title, content) => {
+      const channel = findChannel(channels, jid);
+      if (!channel) return null;
+      return channel.sendCard ? channel.sendCard(jid, title, content) : null;
+    },
+    updateCard: async (jid, cardId, title, content) => {
+      const channel = findChannel(channels, jid);
+      if (!channel || !channel.updateCard) return;
+      return channel.updateCard(jid, cardId, title, content);
     },
     registeredGroups: () => registeredGroups,
     registerGroup,

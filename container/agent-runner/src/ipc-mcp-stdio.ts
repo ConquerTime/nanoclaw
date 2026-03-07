@@ -40,6 +40,77 @@ const server = new McpServer({
 });
 
 server.tool(
+  'send_card',
+  "Send a loading/status card to the user. Returns a cardId you can use with update_card to replace it in-place. Use this at the start of a long task to show a loading indicator, then call update_card when done.",
+  {
+    title: z.string().describe('Card title, e.g. "⏳ Processing..."'),
+    content: z.string().describe('Card body text (markdown supported)'),
+  },
+  async (args) => {
+    const replyFile = `card-reply-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`;
+    const data: Record<string, string> = {
+      type: 'send_card',
+      chatJid,
+      title: args.title,
+      content: args.content,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+      replyFile,
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    // Poll for the cardId reply (written by the host after sending)
+    const replyPath = path.join(IPC_DIR, 'input', replyFile);
+    const deadline = Date.now() + 10_000;
+    let cardId: string | null = null;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 200));
+      if (fs.existsSync(replyPath)) {
+        try {
+          const reply = JSON.parse(fs.readFileSync(replyPath, 'utf-8'));
+          fs.unlinkSync(replyPath);
+          cardId = reply.cardId || null;
+        } catch { /* ignore */ }
+        break;
+      }
+    }
+
+    return {
+      content: [{
+        type: 'text' as const,
+        text: cardId ? `Card sent. cardId: ${cardId}` : 'Card sent (no cardId returned — channel may not support cards).',
+      }],
+    };
+  },
+);
+
+server.tool(
+  'update_card',
+  "Update a previously sent card message in-place. Use this to replace a loading card with the final result.",
+  {
+    card_id: z.string().describe('The cardId returned by send_card'),
+    title: z.string().describe('New card title'),
+    content: z.string().describe('New card body text (markdown supported)'),
+  },
+  async (args) => {
+    const data: Record<string, string> = {
+      type: 'update_card',
+      chatJid,
+      cardId: args.card_id,
+      title: args.title,
+      content: args.content,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    return { content: [{ type: 'text' as const, text: 'Card update requested.' }] };
+  },
+);
+
+server.tool(
   'send_message',
   "Send a message to the user or group immediately while you're still running. Use this for progress updates or to send multiple messages. You can call this multiple times.",
   {

@@ -22,6 +22,8 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const stepIdx = args.indexOf('--step');
 
+  console.log('start setup');
+
   if (stepIdx === -1 || !args[stepIdx + 1]) {
     console.error(
       `Usage: npx tsx setup/index.ts --step <${Object.keys(STEPS).join('|')}> [args...]`,

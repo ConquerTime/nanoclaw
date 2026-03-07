@@ -53,6 +53,8 @@ beforeEach(() => {
 
   deps = {
     sendMessage: async () => {},
+    sendCard: async () => null,
+    updateCard: async () => {},
     registeredGroups: () => groups,
     registerGroup: (jid, group) => {
       groups[jid] = group;

@@ -3,6 +3,10 @@
 
 FROM node:22-slim
 
+# Use Aliyun apt mirror for faster downloads in China
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
+
 # Install system dependencies for Chromium
 RUN apt-get update && apt-get install -y \
     chromium \
@@ -30,8 +34,8 @@ RUN apt-get update && apt-get install -y \
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
-# Install agent-browser and claude-code globally
-RUN npm install -g agent-browser @anthropic-ai/claude-code
+# Install agent-browser and claude-code globally (use npmmirror for faster downloads in China)
+RUN npm install -g --registry https://registry.npmmirror.com agent-browser @anthropic-ai/claude-code
 
 # Create app directory
 WORKDIR /app
@@ -39,8 +43,8 @@ WORKDIR /app
 # Copy package files first for better caching
 COPY agent-runner/package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (use npmmirror for faster downloads in China)
+RUN npm install --registry https://registry.npmmirror.com
 
 # Copy source code
 COPY agent-runner/ ./

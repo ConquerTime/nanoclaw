@@ -90,6 +90,10 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
+  // Optional: send a card message, returns cardId for later updates.
+  sendCard?(jid: string, title: string, content: string): Promise<string | null>;
+  // Optional: update a previously sent card message.
+  updateCard?(jid: string, cardId: string, title: string, content: string): Promise<void>;
 }
 
 // Callback type that channels use to deliver inbound messages

@@ -7,6 +7,10 @@
 
 // slack
 
+// feishu
+import './feishu.js';
+
 // telegram
+import './telegram.js';
 
 // whatsapp
