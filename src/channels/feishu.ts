@@ -42,7 +42,13 @@ function markdownToPost(md: string): PostTag[][] {
         i++;
       }
       i++; // skip closing ```
-      result.push([{ tag: 'code_block', language: lang || 'plain', text: codeLines.join('\n') }]);
+      result.push([
+        {
+          tag: 'code_block',
+          language: lang || 'plain',
+          text: codeLines.join('\n'),
+        },
+      ]);
       continue;
     }
 
@@ -86,7 +92,8 @@ function markdownToPost(md: string): PostTag[][] {
 function parseInline(text: string, forceStyle?: boolean): PostTag[] {
   const tags: PostTag[] = [];
   // Regex matches inline patterns in order of precedence
-  const re = /(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
+  const re =
+    /(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
   let last = 0;
   let match: RegExpExecArray | null;
 
@@ -149,19 +156,25 @@ function buildInteractiveCard(title: string, content: string): object {
     schema: '2.0',
     body: {
       elements: [
-        ...(title ? [{
-          tag: 'markdown',
-          content: `**${title}**`,
-        }] : []),
+        ...(title
+          ? [
+              {
+                tag: 'markdown',
+                content: `**${title}**`,
+              },
+            ]
+          : []),
         {
           tag: 'markdown',
           content,
         },
       ],
     },
-    header: title ? {
-      title: { tag: 'plain_text', content: title },
-    } : undefined,
+    header: title
+      ? {
+          title: { tag: 'plain_text', content: title },
+        }
+      : undefined,
   };
 }
 
@@ -198,7 +211,13 @@ export class FeishuChannel implements Channel {
 
     const dispatcher = new Lark.EventDispatcher({}).register({
       'im.message.receive_v1': async (data: any) => {
-        logger.info({ eventType: 'im.message.receive_v1', chatId: data?.message?.chat_id }, 'Feishu event received');
+        logger.info(
+          {
+            eventType: 'im.message.receive_v1',
+            chatId: data?.message?.chat_id,
+          },
+          'Feishu event received',
+        );
         try {
           await this.handleMessage(data);
         } catch (err) {
@@ -216,13 +235,18 @@ export class FeishuChannel implements Channel {
       const tokenManager = (this.client as any).tokenManager;
       const token = await tokenManager?.getTenantAccessToken?.();
       if (token) {
-        const resp = await fetch('https://open.feishu.cn/open-apis/bot/v3/info', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const resp = await fetch(
+          'https://open.feishu.cn/open-apis/bot/v3/info',
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
         const json = (await resp.json()) as any;
         const botName = json?.bot?.app_name || 'unknown';
         logger.info({ botName }, 'Feishu bot connected via WebSocket');
-        console.log(`\n  Feishu bot connected (WebSocket long connection) — bot name: "${botName}"\n`);
+        console.log(
+          `\n  Feishu bot connected (WebSocket long connection) — bot name: "${botName}"\n`,
+        );
       } else {
         throw new Error('no token');
       }
@@ -262,7 +286,11 @@ export class FeishuChannel implements Channel {
 
     // Parse text content
     let content = '';
-    let mentions: Array<{ key: string; name: string; id?: { open_id?: string } }> = [];
+    let mentions: Array<{
+      key: string;
+      name: string;
+      id?: { open_id?: string };
+    }> = [];
     try {
       const parsed = JSON.parse(msg.content);
       content = parsed.text || '';
@@ -288,7 +316,10 @@ export class FeishuChannel implements Channel {
     }
 
     // Log raw content for debugging mention format
-    logger.debug({ rawContent: msg.content, parsedText: content, mentions }, 'Feishu raw message content');
+    logger.debug(
+      { rawContent: msg.content, parsedText: content, mentions },
+      'Feishu raw message content',
+    );
 
     // Detect if the bot was @mentioned.
     // Feishu uses @_user_N placeholders in text + a mentions array.
@@ -297,8 +328,7 @@ export class FeishuChannel implements Channel {
     // trigger it, so we treat any @_user_ as a bot mention.
     // Also handle legacy <at user_id="...">Name</at> XML format.
     const wasMentioned =
-      /@_user_\S*/g.test(content) ||
-      /<at[^>]*>/g.test(content);
+      /@_user_\S*/g.test(content) || /<at[^>]*>/g.test(content);
 
     // Strip the mention placeholders from the display text
     let cleanContent = content
@@ -316,7 +346,10 @@ export class FeishuChannel implements Channel {
 
     const group = this.opts.registeredGroups()[chatJid];
     if (!group) {
-      logger.debug({ chatJid, chatName }, 'Message from unregistered Feishu chat');
+      logger.debug(
+        { chatJid, chatName },
+        'Message from unregistered Feishu chat',
+      );
       return;
     }
 
@@ -330,7 +363,10 @@ export class FeishuChannel implements Channel {
       is_from_me: false,
     });
 
-    logger.info({ chatJid, chatName, sender: senderName }, 'Feishu message stored');
+    logger.info(
+      { chatJid, chatName, sender: senderName },
+      'Feishu message stored',
+    );
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
@@ -353,7 +389,11 @@ export class FeishuChannel implements Channel {
     logger.info({ jid, length: text.length }, 'Feishu message sent');
   }
 
-  async sendCard(jid: string, title: string, content: string): Promise<string | null> {
+  async sendCard(
+    jid: string,
+    title: string,
+    content: string,
+  ): Promise<string | null> {
     const chatId = jid.replace(/^feishu:/, '');
     const card = buildInteractiveCard(title, content);
 
@@ -375,7 +415,12 @@ export class FeishuChannel implements Channel {
     }
   }
 
-  async updateCard(jid: string, cardId: string, title: string, content: string): Promise<void> {
+  async updateCard(
+    jid: string,
+    cardId: string,
+    title: string,
+    content: string,
+  ): Promise<void> {
     const card = buildInteractiveCard(title, content);
 
     try {
@@ -444,7 +489,8 @@ export class FeishuChannel implements Channel {
 registerChannel('feishu', (opts: ChannelOpts) => {
   const envVars = readEnvFile(['FEISHU_APP_ID', 'FEISHU_APP_SECRET']);
   const appId = process.env.FEISHU_APP_ID || envVars.FEISHU_APP_ID || '';
-  const appSecret = process.env.FEISHU_APP_SECRET || envVars.FEISHU_APP_SECRET || '';
+  const appSecret =
+    process.env.FEISHU_APP_SECRET || envVars.FEISHU_APP_SECRET || '';
   if (!appId || !appSecret) {
     logger.warn('Feishu: FEISHU_APP_ID or FEISHU_APP_SECRET not set');
     return null;
