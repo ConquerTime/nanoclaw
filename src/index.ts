@@ -90,6 +90,21 @@ function saveState(): void {
   setRouterState('last_agent_timestamp', JSON.stringify(lastAgentTimestamp));
 }
 
+function updateGroup(
+  jid: string,
+  updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>>,
+): void {
+  const existing = registeredGroups[jid];
+  if (!existing) {
+    logger.warn({ jid }, 'updateGroup: group not found');
+    return;
+  }
+  const updated: RegisteredGroup = { ...existing, ...updates };
+  registeredGroups[jid] = updated;
+  setRegisteredGroup(jid, updated);
+  logger.info({ jid, updates }, 'Group updated');
+}
+
 function registerGroup(jid: string, group: RegisteredGroup): void {
   let groupDir: string;
   try {
@@ -577,6 +592,7 @@ async function main(): Promise<void> {
     },
     registeredGroups: () => registeredGroups,
     registerGroup,
+    updateGroup,
     syncGroups: async (force: boolean) => {
       await Promise.all(
         channels

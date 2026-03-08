@@ -505,8 +505,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Credentials are injected by the host's credential proxy via ANTHROPIC_BASE_URL.
-  // No real secrets exist in the container environment.
+  // Inject secrets into process.env so claude-code picks up Bedrock/API credentials.
+  // The PreToolUse Bash hook (createSanitizeBashHook) unsets these before every
+  // Bash command, so they are never visible to shell subprocesses.
+  for (const [key, value] of Object.entries(containerInput.secrets || {})) {
+    process.env[key] = value;
+  }
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

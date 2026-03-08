@@ -11,173 +11,6 @@ import {
   RegisteredGroup,
 } from '../types.js';
 
-// Tag types for Feishu post rich text
-interface PostTag {
-  tag: string;
-  text?: string;
-  style?: string[];
-  href?: string;
-  language?: string;
-}
-
-/**
- * Convert Markdown text to Feishu post rich-text format.
- * Supports: bold, italic, strikethrough, inline code, code blocks, links, headers, lists.
- */
-function markdownToPost(md: string): PostTag[][] {
-  const lines = md.split('\n');
-  const result: PostTag[][] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // Code block
-    if (line.startsWith('```')) {
-      const lang = line.slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith('```')) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
-      result.push([
-        {
-          tag: 'code_block',
-          language: lang || 'plain',
-          text: codeLines.join('\n'),
-        },
-      ]);
-      continue;
-    }
-
-    // Heading → bold line
-    const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
-    if (headingMatch) {
-      result.push(parseInline(headingMatch[2], true));
-      i++;
-      continue;
-    }
-
-    // Empty line
-    if (!line.trim()) {
-      result.push([{ tag: 'text', text: '' }]);
-      i++;
-      continue;
-    }
-
-    // List items: preserve bullet/number prefix, parse inline formatting on the rest
-    const listMatch = line.match(/^(\s*[-*]\s+|\s*\d+\.\s+)(.*)/);
-    if (listMatch) {
-      const prefix = listMatch[1];
-      const body = listMatch[2];
-      result.push([{ tag: 'text', text: prefix }, ...parseInline(body)]);
-      i++;
-      continue;
-    }
-
-    // Regular line
-    result.push(parseInline(line));
-    i++;
-  }
-
-  return result;
-}
-
-/**
- * Parse inline Markdown formatting into Feishu post tags.
- * Handles: **bold**, *italic*, ~~strikethrough~~, `code`, [text](url)
- */
-function parseInline(text: string, forceStyle?: boolean): PostTag[] {
-  const tags: PostTag[] = [];
-  // Regex matches inline patterns in order of precedence
-  const re =
-    /(\*\*(.+?)\*\*|\*(.+?)\*|~~(.+?)~~|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
-  let last = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = re.exec(text)) !== null) {
-    // Text before this match
-    if (match.index > last) {
-      const plain = text.slice(last, match.index);
-      if (plain) {
-        const t: PostTag = { tag: 'text', text: plain };
-        if (forceStyle) t.style = ['bold'];
-        tags.push(t);
-      }
-    }
-
-    if (match[2] !== undefined) {
-      // **bold**
-      tags.push({ tag: 'text', text: match[2], style: ['bold'] });
-    } else if (match[3] !== undefined) {
-      // *italic*
-      tags.push({ tag: 'text', text: match[3], style: ['italic'] });
-    } else if (match[4] !== undefined) {
-      // ~~strikethrough~~
-      tags.push({ tag: 'text', text: match[4], style: ['lineThrough'] });
-    } else if (match[5] !== undefined) {
-      // `inline code`
-      tags.push({ tag: 'text', text: match[5], style: ['codeInline'] });
-    } else if (match[6] !== undefined && match[7] !== undefined) {
-      // [text](url)
-      tags.push({ tag: 'a', text: match[6], href: match[7] });
-    }
-
-    last = match.index + match[0].length;
-  }
-
-  // Remaining text
-  if (last < text.length) {
-    const rest = text.slice(last);
-    if (rest) {
-      const t: PostTag = { tag: 'text', text: rest };
-      if (forceStyle) t.style = ['bold'];
-      tags.push(t);
-    }
-  }
-
-  if (tags.length === 0) {
-    const t: PostTag = { tag: 'text', text };
-    if (forceStyle) t.style = ['bold'];
-    tags.push(t);
-  }
-
-  return tags;
-}
-
-/**
- * Build a Feishu interactive card payload.
- * Uses the card 2.0 JSON schema with a markdown element for rich content.
- */
-function buildInteractiveCard(title: string, content: string): object {
-  return {
-    schema: '2.0',
-    body: {
-      elements: [
-        ...(title
-          ? [
-              {
-                tag: 'markdown',
-                content: `**${title}**`,
-              },
-            ]
-          : []),
-        {
-          tag: 'markdown',
-          content,
-        },
-      ],
-    },
-    header: title
-      ? {
-          title: { tag: 'plain_text', content: title },
-        }
-      : undefined,
-  };
-}
-
 export interface FeishuChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
@@ -435,67 +268,24 @@ export class FeishuChannel implements Channel {
   }
 
   async sendMessage(jid: string, text: string): Promise<void> {
-    const chatId = jid.replace(/^feishu:/, '');
-    const post = markdownToPost(text);
+    if (!this.wsClient) {
+      logger.warn('Feishu bot not initialized');
+      return;
+    }
 
     try {
+      const chatId = jid.replace(/^feishu:/, '');
       await this.client.im.v1.message.create({
         params: { receive_id_type: 'chat_id' },
         data: {
           receive_id: chatId,
-          msg_type: 'post',
-          content: JSON.stringify({ zh_cn: { title: '', content: post } }),
+          content: JSON.stringify({ text }),
+          msg_type: 'text',
         },
       });
+      logger.info({ jid, length: text.length }, 'Feishu message sent');
     } catch (err) {
       logger.error({ jid, err }, 'Failed to send Feishu message');
-      return;
-    }
-    logger.info({ jid, length: text.length }, 'Feishu message sent');
-  }
-
-  async sendCard(
-    jid: string,
-    title: string,
-    content: string,
-  ): Promise<string | null> {
-    const chatId = jid.replace(/^feishu:/, '');
-    const card = buildInteractiveCard(title, content);
-
-    try {
-      const resp = await this.client.im.v1.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: {
-          receive_id: chatId,
-          msg_type: 'interactive',
-          content: JSON.stringify(card),
-        },
-      });
-      const messageId = (resp as any)?.data?.message_id || null;
-      logger.info({ jid, messageId }, 'Feishu card sent');
-      return messageId;
-    } catch (err) {
-      logger.error({ jid, err }, 'Failed to send Feishu card');
-      return null;
-    }
-  }
-
-  async updateCard(
-    jid: string,
-    cardId: string,
-    title: string,
-    content: string,
-  ): Promise<void> {
-    const card = buildInteractiveCard(title, content);
-
-    try {
-      await this.client.im.v1.message.patch({
-        path: { message_id: cardId },
-        data: { content: JSON.stringify(card) },
-      });
-      logger.info({ jid, cardId }, 'Feishu card updated');
-    } catch (err) {
-      logger.error({ jid, cardId, err }, 'Failed to update Feishu card');
     }
   }
 
@@ -514,18 +304,8 @@ export class FeishuChannel implements Channel {
     }
   }
 
-  async setTyping(jid: string, isTyping: boolean): Promise<void> {
-    if (!isTyping) return; // Feishu typing indicator auto-expires, no "stop" needed
-    const chatId = jid.replace(/^feishu:/, '');
-    try {
-      await this.client.request({
-        method: 'POST',
-        url: `https://open.feishu.cn/open-apis/im/v1/chats/${chatId}/typing`,
-        data: { action_type: 'typing' },
-      });
-    } catch (err) {
-      logger.debug({ jid, err }, 'Failed to send Feishu typing indicator');
-    }
+  async setTyping(_jid: string, _isTyping: boolean): Promise<void> {
+    // Feishu does not support typing indicators
   }
 }
 

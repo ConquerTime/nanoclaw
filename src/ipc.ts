@@ -25,6 +25,10 @@ export interface IpcDeps {
   ) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
+  updateGroup: (
+    jid: string,
+    updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>>,
+  ) => void;
   syncGroups: (force: boolean) => Promise<void>;
   getAvailableGroups: () => AvailableGroup[];
   writeGroupsSnapshot: (
@@ -243,7 +247,7 @@ export async function processTaskIpc(
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
-    // For register_group
+    // For register_group / update_group
     jid?: string;
     name?: string;
     folder?: string;
@@ -491,6 +495,39 @@ export async function processTaskIpc(
           { sourceGroup },
           'Unauthorized refresh_groups attempt blocked',
         );
+      }
+      break;
+
+    case 'update_group':
+      // Only main group can update group config
+      if (!isMain) {
+        logger.warn(
+          { sourceGroup },
+          'Unauthorized update_group attempt blocked',
+        );
+        break;
+      }
+      if (data.jid) {
+        const existing = registeredGroups[data.jid];
+        if (!existing) {
+          logger.warn(
+            { jid: data.jid },
+            'update_group: group not found',
+          );
+          break;
+        }
+        const updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>> = {};
+        if (data.name !== undefined) updates.name = data.name;
+        if (data.trigger !== undefined) updates.trigger = data.trigger;
+        if (data.requiresTrigger !== undefined) updates.requiresTrigger = data.requiresTrigger;
+        if (data.containerConfig !== undefined) updates.containerConfig = data.containerConfig;
+        deps.updateGroup(data.jid, updates);
+        logger.info(
+          { jid: data.jid, sourceGroup, updates },
+          'Group updated via IPC',
+        );
+      } else {
+        logger.warn({ data }, 'Invalid update_group request - missing jid');
       }
       break;
 
