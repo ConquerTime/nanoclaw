@@ -92,7 +92,12 @@ function saveState(): void {
 
 function updateGroup(
   jid: string,
-  updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>>,
+  updates: Partial<
+    Pick<
+      RegisteredGroup,
+      'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'
+    >
+  >,
 ): void {
   const existing = registeredGroups[jid];
   if (!existing) {

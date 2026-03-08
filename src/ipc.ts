@@ -27,7 +27,12 @@ export interface IpcDeps {
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   updateGroup: (
     jid: string,
-    updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>>,
+    updates: Partial<
+      Pick<
+        RegisteredGroup,
+        'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'
+      >
+    >,
   ) => void;
   syncGroups: (force: boolean) => Promise<void>;
   getAvailableGroups: () => AvailableGroup[];
@@ -510,17 +515,21 @@ export async function processTaskIpc(
       if (data.jid) {
         const existing = registeredGroups[data.jid];
         if (!existing) {
-          logger.warn(
-            { jid: data.jid },
-            'update_group: group not found',
-          );
+          logger.warn({ jid: data.jid }, 'update_group: group not found');
           break;
         }
-        const updates: Partial<Pick<RegisteredGroup, 'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'>> = {};
+        const updates: Partial<
+          Pick<
+            RegisteredGroup,
+            'name' | 'trigger' | 'requiresTrigger' | 'containerConfig'
+          >
+        > = {};
         if (data.name !== undefined) updates.name = data.name;
         if (data.trigger !== undefined) updates.trigger = data.trigger;
-        if (data.requiresTrigger !== undefined) updates.requiresTrigger = data.requiresTrigger;
-        if (data.containerConfig !== undefined) updates.containerConfig = data.containerConfig;
+        if (data.requiresTrigger !== undefined)
+          updates.requiresTrigger = data.requiresTrigger;
+        if (data.containerConfig !== undefined)
+          updates.containerConfig = data.containerConfig;
         deps.updateGroup(data.jid, updates);
         logger.info(
           { jid: data.jid, sourceGroup, updates },

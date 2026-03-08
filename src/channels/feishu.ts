@@ -374,7 +374,11 @@ export class FeishuChannel implements Channel {
 
   private extractPostText(parsed: any): string {
     // Post (rich text) content has a nested structure: { title, content: [[{tag,text},...], ...] }
-    const lang = parsed.zh_cn || parsed.en_us || parsed.ja_jp || Object.values(parsed)[0] as any;
+    const lang =
+      parsed.zh_cn ||
+      parsed.en_us ||
+      parsed.ja_jp ||
+      (Object.values(parsed)[0] as any);
     if (!lang) return '[Post]';
     const parts: string[] = [];
     if (lang.title) parts.push(lang.title);
@@ -384,7 +388,8 @@ export class FeishuChannel implements Channel {
         for (const node of line) {
           if (node.tag === 'text' && node.text) parts.push(node.text);
           else if (node.tag === 'a' && node.text) parts.push(node.text);
-          else if (node.tag === 'at' && node.user_name) parts.push(`@${node.user_name}`);
+          else if (node.tag === 'at' && node.user_name)
+            parts.push(`@${node.user_name}`);
           else if (node.tag === 'img') parts.push('[Image]');
           else if (node.tag === 'media') parts.push('[Video]');
         }
