@@ -31,6 +31,7 @@ import {
   getAllRegisteredGroups,
   getAllSessions,
   getAllTasks,
+  getMessagesByIds,
   getMessagesSince,
   getNewMessages,
   getRegisteredGroup,
@@ -195,7 +196,29 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     if (!hasTrigger) return true;
   }
 
-  const prompt = formatMessages(missedMessages, TIMEZONE);
+  const quotedIds = [
+    ...new Set(
+      missedMessages
+        .map((m) => m.reply_to_id)
+        .filter((id): id is string => !!id),
+    ),
+  ];
+  const quotedMessages = getMessagesByIds(quotedIds, chatJid);
+  const quotedMap = new Map(quotedMessages.map((m) => [m.id, m]));
+
+  const prompt = formatMessages(missedMessages, TIMEZONE, quotedMap);
+
+  // Find the last trigger message id to use as reply target (feishu only)
+  const allowlistCfgForReply = loadSenderAllowlist();
+  const triggerMessages = missedMessages.filter(
+    (m) =>
+      TRIGGER_PATTERN.test(m.content.trim()) &&
+      (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfgForReply)),
+  );
+  const replyToMessageId =
+    chatJid.startsWith('feishu:') && triggerMessages.length > 0
+      ? triggerMessages[triggerMessages.length - 1].id
+      : undefined;
 
   // Advance cursor so the piping path in startMessageLoop won't re-fetch
   // these messages. Save the old cursor so we can roll back on error.
@@ -240,7 +263,7 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       if (text) {
         // Clear the thinking placeholder before sending the real reply
         await channel.setTyping?.(chatJid, false);
-        await channel.sendMessage(chatJid, text);
+        await channel.sendMessage(chatJid, text, replyToMessageId);
         outputSentToUser = true;
       }
       // Only reset idle timer on actual results, not session-update markers (result: null)
@@ -435,7 +458,17 @@ async function startMessageLoop(): Promise<void> {
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
-          const formatted = formatMessages(messagesToSend, TIMEZONE);
+          const pipeQuotedIds = [
+            ...new Set(
+              messagesToSend
+                .map((m) => m.reply_to_id)
+                .filter((id): id is string => !!id),
+            ),
+          ];
+          const pipeQuotedMap = new Map(
+            getMessagesByIds(pipeQuotedIds, chatJid).map((m) => [m.id, m]),
+          );
+          const formatted = formatMessages(messagesToSend, TIMEZONE, pipeQuotedMap);
 
           if (queue.sendMessage(chatJid, formatted)) {
             logger.debug(

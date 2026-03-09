@@ -246,6 +246,7 @@ export class FeishuChannel implements Channel {
     const rawContent = message.content || '{}';
     const mentions: any[] = message.mentions || [];
     const createTime = message.create_time; // millisecond timestamp string
+    const parentId: string | undefined = message.parent_id || undefined;
 
     const chatJid = `feishu:${chatId}`;
     const timestamp = createTime
@@ -316,6 +317,7 @@ export class FeishuChannel implements Channel {
       content,
       timestamp,
       is_from_me: false,
+      reply_to_id: parentId,
     });
 
     logger.info(
@@ -439,24 +441,39 @@ export class FeishuChannel implements Channel {
     return chatId;
   }
 
-  async sendMessage(jid: string, text: string): Promise<void> {
+  async sendMessage(
+    jid: string,
+    text: string,
+    replyToId?: string,
+  ): Promise<void> {
     const chatId = jid.replace(/^feishu:/, '');
     const post = markdownToPost(text);
+    const content = JSON.stringify({ zh_cn: { title: '', content: post } });
 
     try {
-      await this.client.im.v1.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: {
-          receive_id: chatId,
-          msg_type: 'post',
-          content: JSON.stringify({ zh_cn: { title: '', content: post } }),
-        },
-      });
+      if (replyToId) {
+        await this.client.im.v1.message.reply({
+          path: { message_id: replyToId },
+          data: {
+            msg_type: 'post',
+            content,
+          },
+        });
+      } else {
+        await this.client.im.v1.message.create({
+          params: { receive_id_type: 'chat_id' },
+          data: {
+            receive_id: chatId,
+            msg_type: 'post',
+            content,
+          },
+        });
+      }
     } catch (err) {
-      logger.error({ jid, err }, 'Failed to send Feishu message');
+      logger.error({ jid, replyToId, err }, 'Failed to send Feishu message');
       return;
     }
-    logger.info({ jid, length: text.length }, 'Feishu message sent');
+    logger.info({ jid, replyToId, length: text.length }, 'Feishu message sent');
   }
 
   async sendCard(

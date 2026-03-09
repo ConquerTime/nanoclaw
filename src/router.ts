@@ -13,10 +13,21 @@ export function escapeXml(s: string): string {
 export function formatMessages(
   messages: NewMessage[],
   timezone: string,
+  quotedMap?: Map<string, NewMessage>,
 ): string {
   const lines = messages.map((m) => {
     const displayTime = formatLocalTime(m.timestamp, timezone);
-    return `<message sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}">${escapeXml(m.content)}</message>`;
+    const replyAttr = m.reply_to_id
+      ? ` reply_to="${escapeXml(m.reply_to_id)}"`
+      : '';
+    const quoted =
+      m.reply_to_id && quotedMap?.has(m.reply_to_id)
+        ? (() => {
+            const q = quotedMap.get(m.reply_to_id)!;
+            return `<quoted sender="${escapeXml(q.sender_name)}">${escapeXml(q.content)}</quoted>`;
+          })()
+        : '';
+    return `<message id="${escapeXml(m.id)}" sender="${escapeXml(m.sender_name)}" time="${escapeXml(displayTime)}"${replyAttr}>${quoted}${escapeXml(m.content)}</message>`;
   });
 
   const header = `<context timezone="${escapeXml(timezone)}" />\n`;

@@ -223,7 +223,6 @@ function readSecrets(): Record<string, string> {
   ]);
 }
 
-
 function isBedrock(): boolean {
   const envVars = readEnvFile(['CLAUDE_CODE_USE_BEDROCK']);
   return (
