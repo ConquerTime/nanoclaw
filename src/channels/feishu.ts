@@ -519,18 +519,8 @@ export class FeishuChannel implements Channel {
     }
   }
 
-  async setTyping(jid: string, isTyping: boolean): Promise<void> {
-    if (!isTyping) return; // Feishu typing indicator auto-expires, no "stop" needed
-    const chatId = jid.replace(/^feishu:/, '');
-    try {
-      await this.client.request({
-        method: 'POST',
-        url: `https://open.feishu.cn/open-apis/im/v1/chats/${chatId}/typing`,
-        data: { action_type: 'typing' },
-      });
-    } catch (err) {
-      logger.debug({ jid, err }, 'Failed to send Feishu typing indicator');
-    }
+  async setTyping(_jid: string, _isTyping: boolean): Promise<void> {
+    // Feishu does not support a typing indicator API — no-op
   }
 }
 

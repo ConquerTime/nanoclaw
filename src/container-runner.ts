@@ -42,6 +42,7 @@ export interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  secrets?: Record<string, string>;
 }
 
 export interface ContainerOutput {
@@ -223,6 +224,14 @@ function readSecrets(): Record<string, string> {
 }
 
 
+function isBedrock(): boolean {
+  const envVars = readEnvFile(['CLAUDE_CODE_USE_BEDROCK']);
+  return (
+    process.env.CLAUDE_CODE_USE_BEDROCK === '1' ||
+    envVars.CLAUDE_CODE_USE_BEDROCK === '1'
+  );
+}
+
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
@@ -233,21 +242,21 @@ function buildContainerArgs(
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
 
-  // Route API traffic through the credential proxy (containers never see real secrets)
-  args.push(
-    '-e',
-    `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
-  );
-
-  // Mirror the host's auth method with a placeholder value.
-  // API key mode: SDK sends x-api-key, proxy replaces with real key.
-  // OAuth mode:   SDK exchanges placeholder token for temp API key,
-  //               proxy injects real OAuth token on that exchange request.
-  const authMode = detectAuthMode();
-  if (authMode === 'api-key') {
-    args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+  if (isBedrock()) {
+    // Bedrock mode: secrets (AWS creds) are injected via stdin JSON.
+    // Do NOT set ANTHROPIC_BASE_URL — Bedrock uses the AWS SDK directly.
   } else {
-    args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+    // Anthropic API / OAuth mode: route traffic through the credential proxy.
+    args.push(
+      '-e',
+      `ANTHROPIC_BASE_URL=http://${CONTAINER_HOST_GATEWAY}:${CREDENTIAL_PROXY_PORT}`,
+    );
+    const authMode = detectAuthMode();
+    if (authMode === 'api-key') {
+      args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
+    } else {
+      args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+    }
   }
 
   // Runtime-specific args for host gateway resolution
@@ -299,6 +308,11 @@ export async function runContainerAgent(
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName, input.isMain);
 
+  // Attach secrets to the stdin payload so the agent-runner can inject them
+  // into process.env (Bedrock: AWS creds; API key: direct key injection).
+  // Secrets are never written to disk or mounted as files.
+  const inputWithSecrets: ContainerInput = { ...input, secrets: readSecrets() };
+
   logger.debug(
     {
       group: group.name,
@@ -337,7 +351,7 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
-    container.stdin.write(JSON.stringify(input));
+    container.stdin.write(JSON.stringify(inputWithSecrets));
     container.stdin.end();
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
